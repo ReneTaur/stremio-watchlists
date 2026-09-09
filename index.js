@@ -169,21 +169,83 @@ app.get("/:config/stream/:type/:id.json", (req, res) => {
   const lists = getListEntries(config);
   const data = loadData(config.userId);
 
-  const streams = [];
-  for (const l of lists) {
-    const items = data[l.key] || [];
-    const inList = items.some((i) => i.id === id);
-    const action = inList ? "remove" : "add";
-    const label = inList ? `Remove from ${l.name}` : `Add to ${l.name}`;
+  const inAny = lists.filter((l) => (data[l.key] || []).some((i) => i.id === id));
+  const desc = inAny.length > 0
+    ? `In: ${inAny.map((l) => l.name).join(", ")}`
+    : "Not in any list yet";
 
-    streams.push({
-      externalUrl: `${PUBLIC_URL}/${action}/${encodeURIComponent(config.userId)}/${l.key}/${type}/${encodeURIComponent(id)}?ln=${encodeURIComponent(l.name)}`,
-      name: `${inList ? "[-]" : "[+]"} ${l.name}`,
-      description: label,
-    });
+  const configEnc = encodeURIComponent(JSON.stringify({
+    userId: config.userId,
+    lists: lists.map((l) => ({ key: l.key, name: l.name })),
+  }));
+
+  res.json({
+    streams: [
+      {
+        externalUrl: `${PUBLIC_URL}/manage/${configEnc}/${type}/${encodeURIComponent(id)}`,
+        name: "Watchlists",
+        description: desc,
+      },
+    ],
+  });
+});
+
+app.get("/manage/:configEnc/:type/:id", async (req, res) => {
+  let conf;
+  try {
+    conf = JSON.parse(decodeURIComponent(req.params.configEnc));
+  } catch {
+    return res.status(400).send("Invalid config");
   }
+  const { userId, lists } = conf;
+  const type = req.params.type;
+  const id = decodeURIComponent(req.params.id);
 
-  res.json({ streams });
+  const meta = await fetchMeta(type, id);
+  const data = loadData(userId);
+
+  const listButtons = lists
+    .map((l) => {
+      const items = data[l.key] || [];
+      const inList = items.some((i) => i.id === id);
+      const action = inList ? "remove" : "add";
+      const icon = inList ? "−" : "+";
+      const label = inList ? `Remove from ${esc(l.name)}` : `Add to ${esc(l.name)}`;
+      const url = `${PUBLIC_URL}/${action}/${encodeURIComponent(userId)}/${l.key}/${type}/${encodeURIComponent(id)}?ln=${encodeURIComponent(l.name)}`;
+      const cls = inList ? "btn remove" : "btn add";
+      return `<a href="${esc(url)}" class="${cls}"><span class="icon">${icon}</span> ${label}</a>`;
+    })
+    .join("\n");
+
+  res.setHeader("Content-Type", "text/html");
+  res.end(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Watchlists</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui,sans-serif;
+display:flex;align-items:center;justify-content:center;min-height:100vh;padding:1rem}
+.card{background:#16213e;border-radius:12px;padding:2rem;text-align:center;
+max-width:400px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+.poster{width:140px;border-radius:8px;margin-bottom:1rem;box-shadow:0 2px 12px rgba(0,0,0,.5)}
+h1{font-size:1.3rem;margin-bottom:.3rem;color:#a78bfa}
+.type{font-size:.85rem;opacity:.5;margin-bottom:1.2rem;text-transform:capitalize}
+.btn{display:block;padding:.8rem 1.2rem;margin:.5rem 0;border-radius:8px;
+text-decoration:none;font-size:1rem;font-weight:600;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn.add{background:#2d6a4f;color:#fff}
+.btn.remove{background:#6b2d3e;color:#fff}
+.icon{font-size:1.2rem;vertical-align:middle;margin-right:.3rem}
+.note{font-size:.8rem;opacity:.5;margin-top:1.2rem}
+</style></head><body>
+<div class="card">
+${meta.poster ? `<img class="poster" src="${esc(meta.poster)}" alt="">` : ""}
+<h1>${esc(meta.name)}</h1>
+<div class="type">${esc(type)}</div>
+${listButtons}
+<p class="note">Pick a list, then close this tab.</p>
+</div>
+</body></html>`);
 });
 
 app.get("/add/:userId/:listKey/:type/:id", async (req, res) => {
