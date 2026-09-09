@@ -1,0 +1,14 @@
+{
+  "name": "stremio-watchlists",
+  "version": "1.0.0",
+  "description": "Stremio addon for creating and managing multiple named watchlists",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "node-fetch": "^2.7.0"
+  }
+}
