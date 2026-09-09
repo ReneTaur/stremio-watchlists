@@ -27,12 +27,31 @@ function parseConfig(encoded) {
 }
 
 function getListEntries(config) {
+  if (!config.userId) return [];
+  const data = loadData(config.userId);
+
+  if (data._lists && data._lists.length > 0) return data._lists;
+
   const entries = [];
   for (let i = 1; i <= 10; i++) {
     const name = config[`list${i}`];
     if (name && name.trim()) entries.push({ key: `list${i}`, name: name.trim() });
   }
+
+  if (entries.length > 0) {
+    data._lists = entries;
+    saveData(config.userId, data);
+  }
   return entries;
+}
+
+function nextListKey(lists) {
+  let max = 0;
+  for (const l of lists) {
+    const m = l.key.match(/^list(\d+)$/);
+    if (m) max = Math.max(max, parseInt(m[1]));
+  }
+  return `list${max + 1}`;
 }
 
 function getDataPath(userId) {
@@ -184,6 +203,12 @@ app.get("/:config/stream/:type/:id.json", (req, res) => {
     });
   }
 
+  streams.push({
+    externalUrl: `${PUBLIC_URL}/settings/${encodeURIComponent(config.userId)}`,
+    name: `Manage Lists (${config.userId})`,
+    description: "Add, rename or delete watchlists",
+  });
+
   res.json({ streams });
 });
 
@@ -307,6 +332,146 @@ p{font-size:1rem;opacity:.7}
 </style></head><body>
 <div class="card"><h1>${msg}</h1><p>You can close this tab and return to Stremio.</p></div>
 </body></html>`;
+}
+
+app.get("/api/:userId/lists", (req, res) => {
+  const userId = decodeURIComponent(req.params.userId);
+  const data = loadData(userId);
+  const lists = data._lists || [];
+  res.json(lists.map((l) => ({
+    key: l.key,
+    name: l.name,
+    count: (data[l.key] || []).length,
+  })));
+});
+
+app.get("/api/:userId/lists/add", (req, res) => {
+  const userId = decodeURIComponent(req.params.userId);
+  const name = (req.query.name || "").trim();
+  if (!name) return res.status(400).json({ error: "Name required" });
+  const data = loadData(userId);
+  if (!data._lists) data._lists = [];
+  const key = nextListKey(data._lists);
+  data._lists.push({ key, name });
+  if (!data[key]) data[key] = [];
+  saveData(userId, data);
+  res.json({ ok: true, key, name });
+});
+
+app.get("/api/:userId/lists/rename/:listKey", (req, res) => {
+  const userId = decodeURIComponent(req.params.userId);
+  const { listKey } = req.params;
+  const name = (req.query.name || "").trim();
+  if (!name) return res.status(400).json({ error: "Name required" });
+  const data = loadData(userId);
+  if (!data._lists) return res.status(404).json({ error: "No lists" });
+  const entry = data._lists.find((l) => l.key === listKey);
+  if (!entry) return res.status(404).json({ error: "List not found" });
+  entry.name = name;
+  saveData(userId, data);
+  res.json({ ok: true, key: listKey, name });
+});
+
+app.get("/api/:userId/lists/delete/:listKey", (req, res) => {
+  const userId = decodeURIComponent(req.params.userId);
+  const { listKey } = req.params;
+  const data = loadData(userId);
+  if (!data._lists) return res.status(404).json({ error: "No lists" });
+  const idx = data._lists.findIndex((l) => l.key === listKey);
+  if (idx === -1) return res.status(404).json({ error: "List not found" });
+  const removed = data._lists.splice(idx, 1)[0];
+  delete data[listKey];
+  saveData(userId, data);
+  res.json({ ok: true, removed: removed.name });
+});
+
+app.get("/settings/:userId", (req, res) => {
+  const userId = decodeURIComponent(req.params.userId);
+  res.setHeader("Content-Type", "text/html");
+  res.end(settingsPage(userId));
+});
+
+function settingsPage(userId) {
+  const apiBase = `${PUBLIC_URL}/api/${encodeURIComponent(userId)}/lists`;
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Watchlists - ${esc(userId)}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;color:#e0e0e0;font-family:system-ui,sans-serif;
+display:flex;justify-content:center;padding:2rem 1rem;min-height:100vh}
+.card{background:#16213e;border-radius:12px;padding:2rem;
+max-width:460px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,.4);align-self:flex-start}
+h1{font-size:1.5rem;color:#a78bfa;margin-bottom:.3rem}
+.sub{opacity:.6;margin-bottom:1.5rem;font-size:.9rem}
+.list-item{display:flex;align-items:center;gap:.5rem;padding:.6rem .8rem;
+background:#1a1a2e;border-radius:8px;margin-bottom:.5rem}
+.list-item .name{flex:1;font-size:1rem;font-weight:600}
+.list-item .count{font-size:.8rem;opacity:.5;margin-right:.5rem}
+.list-item button{background:none;border:none;color:#e0e0e0;cursor:pointer;
+font-size:.9rem;padding:.3rem .5rem;border-radius:4px;opacity:.7;transition:all .15s}
+.list-item button:hover{opacity:1}
+.list-item .rename:hover{background:#2d6a4f}
+.list-item .delete:hover{background:#6b2d3e}
+.add-row{display:flex;gap:.5rem;margin-top:1rem}
+.add-row input{flex:1;padding:.6rem;font-size:1rem;background:#1a1a2e;border:1px solid #333;
+color:#fff;border-radius:6px}
+.add-row input:focus{outline:none;border-color:#a78bfa}
+.add-row button{padding:.6rem 1rem;background:#a78bfa;color:#fff;border:none;
+border-radius:6px;font-weight:600;cursor:pointer;white-space:nowrap}
+.add-row button:hover{background:#8b5cf6}
+.empty{text-align:center;opacity:.5;padding:1.5rem 0}
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);
+background:#2d6a4f;color:#fff;padding:.6rem 1.5rem;border-radius:8px;
+font-weight:600;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+.note{font-size:.8rem;opacity:.4;margin-top:1.2rem;text-align:center}
+</style></head><body>
+<div class="card">
+<h1>Manage Lists</h1>
+<div class="sub">${esc(userId)}</div>
+<div id="lists"></div>
+<div class="add-row">
+<input id="newName" placeholder="New list name...">
+<button onclick="addList()">Add</button>
+</div>
+<p class="note">Changes take effect immediately in Stremio. New catalogs appear after restarting Stremio.</p>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const API=${JSON.stringify(apiBase)};
+function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2000)}
+async function load(){
+  const r=await fetch(API);const lists=await r.json();
+  const el=document.getElementById("lists");
+  if(!lists.length){el.innerHTML='<div class="empty">No lists yet. Add one below.</div>';return}
+  el.innerHTML=lists.map(l=>\`<div class="list-item" data-key="\${l.key}">
+    <span class="name">\${esc(l.name)}</span>
+    <span class="count">\${l.count} items</span>
+    <button class="rename" onclick="renameList('\${l.key}','\${esc(l.name).replace(/'/g,"\\\\'")}')">Rename</button>
+    <button class="delete" onclick="deleteList('\${l.key}','\${esc(l.name).replace(/'/g,"\\\\'")}')">Delete</button>
+  </div>\`).join("");
+}
+function esc(s){const d=document.createElement("span");d.textContent=s;return d.innerHTML}
+async function addList(){
+  const inp=document.getElementById("newName");
+  const name=inp.value.trim();if(!name)return;
+  await fetch(API+"/add?name="+encodeURIComponent(name));
+  inp.value="";toast("Added "+name);load();
+}
+async function renameList(key,oldName){
+  const name=prompt("Rename list:",oldName);if(!name||!name.trim())return;
+  await fetch(API+"/rename/"+key+"?name="+encodeURIComponent(name.trim()));
+  toast("Renamed to "+name.trim());load();
+}
+async function deleteList(key,name){
+  if(!confirm("Delete \\""+name+"\\" and all its items?"))return;
+  await fetch(API+"/delete/"+key);
+  toast("Deleted "+name);load();
+}
+document.getElementById("newName").addEventListener("keydown",e=>{if(e.key==="Enter")addList()});
+load();
+</script></body></html>`;
 }
 
 app.get("/configure", (req, res) => {
