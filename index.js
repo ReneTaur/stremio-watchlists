@@ -183,7 +183,7 @@ app.get("/:config/stream/:type/:id.json", (req, res) => {
     streams: [
       {
         externalUrl: `${PUBLIC_URL}/manage/${configEnc}/${type}/${encodeURIComponent(id)}`,
-        name: "Watchlists",
+        name: `Watchlists (${config.userId})`,
         description: desc,
       },
     ],
@@ -241,7 +241,7 @@ text-decoration:none;font-size:1rem;font-weight:600;transition:opacity .15s}
 <div class="card">
 ${meta.poster ? `<img class="poster" src="${esc(meta.poster)}" alt="">` : ""}
 <h1>${esc(meta.name)}</h1>
-<div class="type">${esc(type)}</div>
+<div class="type">${esc(type)} &middot; ${esc(userId)}</div>
 ${listButtons}
 <p class="note">Pick a list, then close this tab.</p>
 </div>
