@@ -88,7 +88,7 @@ async function fetchMeta(type, id) {
 function buildManifest(config) {
   const lists = getListEntries(config);
   return {
-    id: "community.watchlists",
+    id: "community.watchlists" + (config.userId ? "." + config.userId.replace(/[^a-zA-Z0-9]/g, "") : ""),
     version: "1.0.0",
     name: "Watchlists",
     description:
