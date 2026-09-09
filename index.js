@@ -110,7 +110,10 @@ function buildManifest(config) {
       })),
     ],
     idPrefixes: ["tt", "scaryo:"],
-    behaviorHints: { configurable: true, configurationRequired: true },
+    behaviorHints: {
+      configurable: true,
+      configurationRequired: !(config.userId && lists.length > 0),
+    },
     config: [
       {
         key: "userId",
