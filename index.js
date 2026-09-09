@@ -169,25 +169,22 @@ app.get("/:config/stream/:type/:id.json", (req, res) => {
   const lists = getListEntries(config);
   const data = loadData(config.userId);
 
-  const inAny = lists.filter((l) => (data[l.key] || []).some((i) => i.id === id));
-  const desc = inAny.length > 0
-    ? `In: ${inAny.map((l) => l.name).join(", ")}`
-    : "Not in any list yet";
+  const streams = [];
+  for (const l of lists) {
+    const items = data[l.key] || [];
+    const inList = items.some((i) => i.id === id);
+    const action = inList ? "remove" : "add";
+    const icon = inList ? "−" : "+";
+    const label = inList ? `Remove from ${l.name}` : `Add to ${l.name}`;
 
-  const configEnc = encodeURIComponent(JSON.stringify({
-    userId: config.userId,
-    lists: lists.map((l) => ({ key: l.key, name: l.name })),
-  }));
+    streams.push({
+      externalUrl: `${PUBLIC_URL}/${action}/${encodeURIComponent(config.userId)}/${l.key}/${type}/${encodeURIComponent(id)}?ln=${encodeURIComponent(l.name)}`,
+      name: `[${icon}] ${l.name} (${config.userId})`,
+      description: label,
+    });
+  }
 
-  res.json({
-    streams: [
-      {
-        externalUrl: `${PUBLIC_URL}/manage/${configEnc}/${type}/${encodeURIComponent(id)}`,
-        name: `Watchlists (${config.userId})`,
-        description: desc,
-      },
-    ],
-  });
+  res.json({ streams });
 });
 
 app.get("/manage/:configEnc/:type/:id", async (req, res) => {
