@@ -72,17 +72,23 @@ function saveData(userId, data) {
 
 const metaCache = new Map();
 
+function baseId(id) {
+  if (id.startsWith("tt") && id.includes(":")) return id.split(":")[0];
+  return id;
+}
+
 async function fetchMeta(type, id) {
-  const ck = `${type}:${id}`;
+  const bid = baseId(id);
+  const ck = `${type}:${bid}`;
   const hit = metaCache.get(ck);
   if (hit && Date.now() - hit.ts < 3600000) return hit.data;
 
-  let meta = { id, type, name: id };
+  let meta = { id: bid, type, name: bid };
 
-  if (id.startsWith("tt")) {
+  if (bid.startsWith("tt")) {
     try {
       const res = await fetch(
-        `https://v3-cinemeta.strem.io/meta/${type}/${id}.json`
+        `https://v3-cinemeta.strem.io/meta/${type}/${bid}.json`
       );
       const d = await res.json();
       if (d.meta)
@@ -184,20 +190,21 @@ app.get("/:config/catalog/:type/:id/:extra.json", handleCatalog);
 app.get("/:config/stream/:type/:id.json", (req, res) => {
   const config = parseConfig(req.params.config);
   if (!config.userId) return res.json({ streams: [] });
-  const { type, id } = req.params;
+  const type = req.params.type;
+  const bid = baseId(req.params.id);
   const lists = getListEntries(config);
   const data = loadData(config.userId);
 
   const streams = [];
   for (const l of lists) {
     const items = data[l.key] || [];
-    const inList = items.some((i) => i.id === id);
+    const inList = items.some((i) => i.id === bid);
     const action = inList ? "remove" : "add";
     const icon = inList ? "−" : "+";
     const label = inList ? `Remove from ${l.name}` : `Add to ${l.name}`;
 
     streams.push({
-      externalUrl: `${PUBLIC_URL}/${action}/${encodeURIComponent(config.userId)}/${l.key}/${type}/${encodeURIComponent(id)}?ln=${encodeURIComponent(l.name)}`,
+      externalUrl: `${PUBLIC_URL}/${action}/${encodeURIComponent(config.userId)}/${l.key}/${type}/${encodeURIComponent(bid)}?ln=${encodeURIComponent(l.name)}`,
       name: `[${icon}] ${l.name} (${config.userId})`,
       description: label,
     });
